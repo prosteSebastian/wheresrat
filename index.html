@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Where’s Rat?</title>
+  <link rel="icon" href="xdd.webp" type="image/webp" />
+  <!-- Tailwind for prototyping -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-gray-900 min-h-screen flex justify-center items-start pt-20">
+<div class="fixed top-0 left-0 w-full h-2 bg-red-600"></div>
+
+<main class="w-full max-w-md mx-auto bg-gray-800 text-gray-100 p-8 rounded-xl shadow-2xl">
+  <h1 class="text-3xl font-extrabold mb-2 flex items-center justify-center gap-2">
+    Where’s Rat?
+    <img src="xdd.webp" alt="rat icon" class="w-6 h-6 inline-block" />
+  </h1>
+  <p id="message" class="text-gray-300 mb-6"></p>
+
+  <div id="timer" class="inline-block bg-gray-700 px-3 py-1 rounded-full text-sm font-mono text-gray-200 mb-6 hidden">
+    Time: 0.00s
+  </div>
+
+  <canvas id="puzzle-canvas" class="w-full rounded-md shadow-inner hidden"></canvas>
+
+  <div id="results" class="space-y-4 text-left hidden"></div>
+
+  <button
+    id="start-btn"
+    class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition focus:ring-2 focus:ring-blue-500"
+  >
+    Start Today’s Game
+  </button>
+
+  <details class="mt-6 text-gray-200">
+    <summary class="cursor-pointer">▶ Previous Games</summary>
+    <table class="w-full mt-2 text-left text-sm">
+      <thead>
+      <tr>
+        <th class="pb-1">Date</th>
+        <th class="pb-1">Score</th>
+        <th class="pb-1">Avg(s)</th>
+      </tr>
+      </thead>
+      <tbody id="history-body"></tbody>
+    </table>
+  </details>
+</main>
+
+<script>
+  function setCookie(n, v, d) {
+    const x = new Date();
+    x.setTime(x.getTime() + d * 864e5);
+    document.cookie = `${n}=${encodeURIComponent(v)};path=/;expires=${x.toUTCString()}`;
+  }
+
+  function getCookie(n) {
+    const m = document.cookie.match('(^|;)\\s*' + n + '=([^;]+)');
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+
+  const msg       = document.getElementById('message');
+  const timerDiv  = document.getElementById('timer');
+  const canvas    = document.getElementById('puzzle-canvas');
+  const ctx       = canvas.getContext('2d');
+  const startBtn  = document.getElementById('start-btn');
+  const resultsEl = document.getElementById('results');
+  const historyT  = document.getElementById('history-body');
+
+  let puzzlesByDate = {};
+  let todayKey = new Date().toISOString().slice(0, 10);
+  const lastKey = 'ratLastPlayed';
+  const streakKey = 'ratStreak';
+
+  let current = 0,
+    startTime = null,
+    timerInt,
+    times = [],
+    resultsLog = [];
+
+  fetch('puzzles.json')
+    .then(r => {
+      console.log('👉 puzzles.json HTTP status:', r.status);
+      return r.json();
+    })
+    .then(json => {
+      console.log('👉 parsed puzzlesByDate:', json);
+      console.log('👉 todayKey is', todayKey);
+      console.log(`👉 entry for ${todayKey}:`, json[todayKey]);
+      puzzlesByDate = json;
+      init();
+    })
+    .catch(err => {
+      console.error('⛔ failed to load puzzles.json:', err);
+      msg.textContent = '⛔ Could not load puzzles.json';
+    });
+
+  function init() {
+    msg.textContent = `Your current streak: ${getCookie(streakKey) || 0} days`;
+    renderHistory();
+    startBtn.addEventListener('click', startGame);
+    canvas.addEventListener('click', handleClick);
+  }
+
+  function startGame() {
+    const todayP = puzzlesByDate[todayKey];
+    if (!todayP) {
+      msg.textContent = 'Puzzle for today not ready.';
+      return;
+    }
+    startBtn.disabled = true;
+    resultsEl.classList.add('hidden');
+    times = [];
+    resultsLog = [];
+    current = 0;
+    loadPuzzle(0);
+  }
+
+  function loadPuzzle(i) {
+    const p = puzzlesByDate[todayKey][i];
+    const img = new Image();
+    img.src = p.src;
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      canvas.classList.remove('hidden');
+      startTimer();
+      msg.textContent = `Find the rat in image ${i + 1} of ${puzzlesByDate[todayKey].length}`;
+    };
+  }
+
+  function handleClick(ev) {
+    if (startTime === null) return;
+
+    const rect   = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x      = (ev.clientX - rect.left) * scaleX;
+    const y      = (ev.clientY - rect.top ) * scaleY;
+
+    const p = puzzlesByDate[todayKey][current];
+
+    console.log(
+      `click → x=${x.toFixed(1)}, y=${y.toFixed(1)}; ` +
+      `rat box → [${p.x1},${p.y1}] → [${p.x2},${p.y2}]`
+    );
+
+    const ok = x >= p.x1 && x <= p.x2 && y >= p.y1 && y <= p.y2;
+    console.log("hit? ", ok);
+
+    resultsLog.push(ok);
+
+    if (ok) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      stopTimer();
+      times.push(elapsed);
+      const avg = (times.reduce((a, b) => a + b, 0) / times.length).toFixed(2);
+      console.log(`✅ Correct! Time: ${elapsed.toFixed(2)}s | Current avg: ${avg}s`);
+    }
+
+
+    if (current < puzzlesByDate[todayKey].length - 1) {
+      loadPuzzle(++current);
+    } else {
+      endGame();
+    }
+  }
+
+  function startTimer() {
+    startTime = Date.now();
+    timerDiv.textContent = 'Time: 0.00s';
+    timerDiv.classList.remove('hidden');
+    clearInterval(timerInt);
+    timerInt = setInterval(() => {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      timerDiv.textContent = `Time: ${elapsed}s`;
+    }, 100);
+  }
+
+  function stopTimer() {
+    clearInterval(timerInt);
+    timerDiv.classList.add('hidden');
+    startTime = null;
+  }
+
+  function endGame() {
+    const total = resultsLog.length;
+    const correct = resultsLog.filter(v => v).length;
+    const validTimes = times.filter(t => Number.isFinite(t));
+    const avg = validTimes.length
+      ? (validTimes.reduce((a, b) => a + b, 0) / validTimes.length).toFixed(2)
+      : 'N/A';
+
+    const oldStreak = +getCookie(streakKey) || 0;
+    const newStreak = correct === total ? oldStreak + 1 : 0;
+    setCookie(streakKey, newStreak, 365);
+    setCookie(lastKey, todayKey, 365);
+
+    canvas.classList.add('hidden');
+    startBtn.disabled = false;
+    resultsEl.innerHTML = `
+      <h2 class="text-2xl font-bold">Results</h2>
+      <p>Score: <span class="font-medium">${correct}/${total}</span></p>
+      <p>Average time: <span class="font-medium">${avg}s</span></p>
+      ${correct === total
+      ? `<p>Your streak: <span class="font-medium">${newStreak} days</span></p>`
+      : `<p class="text-red-400">Your streak has been reset.</p>`
+    }
+    `;
+    resultsEl.classList.remove('hidden');
+
+    saveHistory(todayKey, `${correct}/${total}`, avg);
+  }
+
+  function saveHistory(date, score, avg) {
+    const h = JSON.parse(localStorage.getItem('ratHistory') || '{}');
+    h[date] = { score, avg };
+    localStorage.setItem('ratHistory', JSON.stringify(h));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const h = JSON.parse(localStorage.getItem('ratHistory') || '{}');
+    historyT.innerHTML = Object.entries(h)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([d, { score, avg }]) => `
+        <tr>
+          <td class="py-1">${d}</td>
+          <td class="py-1">${score}</td>
+          <td class="py-1">${avg}</td>
+        </tr>
+      `).join('');
+  }
+</script>
+</body>
+</html>
