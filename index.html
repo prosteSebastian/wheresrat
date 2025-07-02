@@ -18,7 +18,7 @@
   <p id="message" class="text-gray-300 mb-6">Your current streak: 0 days</p>
 
   <!-- canvas container -->
-  <div id="canvas-wrap" class="hidden">
+  <div id="canvas-wrap" class="hidden mb-6">
     <canvas id="puzzle-canvas" class="w-full rounded-md shadow-inner"></canvas>
   </div>
 
@@ -36,7 +36,11 @@
     <summary class="cursor-pointer">▶ Records</summary>
     <table class="w-full mt-2 text-left text-sm">
       <thead>
-      <tr><th class="pb-1">Date</th><th class="pb-1">Score</th><th class="pb-1">Avg(s)</th></tr>
+      <tr>
+        <th class="pb-1">Date</th>
+        <th class="pb-1">Score</th>
+        <th class="pb-1">Avg(s)</th>
+      </tr>
       </thead>
       <tbody id="history-body"></tbody>
       <tfoot id="history-footer" class="border-t border-gray-700"></tfoot>
@@ -45,40 +49,56 @@
 </main>
 
 <script>
-  // cookie helpers
+  //–– cookie helpers ––
   function setCookie(n, v, d) {
     const x = new Date();
     x.setTime(x.getTime() + d * 864e5);
     document.cookie = `${n}=${encodeURIComponent(v)};path=/;expires=${x.toUTCString()}`;
   }
   function getCookie(n) {
-    const m = document.cookie.match('(^|;)\\s*' + n + '=(\\[^;]+)');
+    const m = document.cookie.match('(^|;)\\s*'+n+'=([^;]+)');
     return m ? decodeURIComponent(m[2]) : null;
   }
 
-  // elements
-  const msg       = document.getElementById('message');
-  const timerDiv  = document.getElementById('timer');
-  const canvasWrap= document.getElementById('canvas-wrap');
-  const canvas    = document.getElementById('puzzle-canvas');
-  const ctx       = canvas.getContext('2d');
-  const startBtn  = document.getElementById('start-btn');
-  const resultsEl = document.getElementById('results');
-  const historyT  = document.getElementById('history-body');
+  //–– elements ––
+  const msg           = document.getElementById('message');
+  const timerDiv      = document.getElementById('timer');
+  const canvasWrap    = document.getElementById('canvas-wrap');
+  const canvas        = document.getElementById('puzzle-canvas');
+  const ctx           = canvas.getContext('2d');
+  const startBtn      = document.getElementById('start-btn');
+  const resultsEl     = document.getElementById('results');
+  const historyBody   = document.getElementById('history-body');
+  const historyFooter = document.getElementById('history-footer');
 
-  // state
-  let puzzlesByDate = {}, todayKey = new Date().toISOString().slice(0,10);
-  const lastKey = 'ratLastPlayed', streakKey = 'ratStreak';
-  let current = 0, startTime = null, timerInt, times = [], resultsLog = [];
+  //–– state ––
+  let puzzlesByDate = {},
+          todayKey      = new Date().toISOString().slice(0,10),
+          isReplay      = false;
 
-  // load registry
+  const lastKey   = 'ratLastPlayed',
+          streakKey = 'ratStreak';
+
+  let current   = 0,
+          startTime = null,
+          timerInt,
+          times      = [],
+          resultsLog = [];
+
+  //–– load registry ––
   fetch('puzzles.json')
           .then(r => r.json())
-          .then(json => { puzzlesByDate = json; init(); })
-          .catch(_ => msg.textContent = '⛔ Could not load puzzles.json');
+          .then(json => {
+            puzzlesByDate = json;
+            init();
+          })
+          .catch(_ => {
+            msg.textContent = '⛔ Could not load puzzles.json';
+          });
 
   function init() {
-    msg.textContent = `Your current streak: ${getCookie(streakKey)||0} days`;
+    isReplay = getCookie(lastKey) === todayKey;
+    msg.textContent = `Your current streak: ${getCookie(streakKey) || 0} days`;
     renderHistory();
     startBtn.addEventListener('click', startGame);
     canvas.addEventListener('click', handleClick);
@@ -86,21 +106,28 @@
 
   function startGame() {
     const todayP = puzzlesByDate[todayKey];
-    if (!todayP) { msg.textContent = 'Puzzle for today not ready.'; return; }
+    if (!todayP) {
+      msg.textContent = 'Puzzle for today not ready.';
+      return;
+    }
     startBtn.classList.add('hidden');
     startBtn.disabled = true;
     resultsEl.classList.add('hidden');
-    times = []; resultsLog = []; current = 0;
+    times = [];
+    resultsLog = [];
+    current = 0;
     loadPuzzle(0);
   }
 
   function loadPuzzle(i) {
     const p = puzzlesByDate[todayKey][i];
-    const img = new Image(); img.src = p.src;
+    const img = new Image();
+    img.src = p.src;
     img.onload = () => {
-      canvas.width = img.width; canvas.height = img.height;
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(img,0,0);
+      canvas.width  = img.width;
+      canvas.height = img.height;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
       canvasWrap.classList.remove('hidden');
       startTimer();
       msg.textContent = `Find the rat in image ${i+1} of ${puzzlesByDate[todayKey].length}`;
@@ -110,16 +137,20 @@
   function handleClick(ev) {
     if (startTime === null) return;
     const rect = canvas.getBoundingClientRect();
-    const x = (ev.clientX - rect.left) * (canvas.width/rect.width);
-    const y = (ev.clientY - rect.top)  * (canvas.height/rect.height);
+    const x = (ev.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (ev.clientY - rect.top)  * (canvas.height / rect.height);
     const p = puzzlesByDate[todayKey][current];
-    const ok = x>=p.x1 && x<=p.x2 && y>=p.y1 && y<=p.y2;
+    const ok = x >= p.x1 && x <= p.x2 && y >= p.y1 && y <= p.y2;
     resultsLog.push(ok);
-    const elapsed = (Date.now() - startTime)/1000;
+    const elapsed = (Date.now() - startTime) / 1000;
     stopTimer();
     if (ok) times.push(elapsed);
-    if (current < puzzlesByDate[todayKey].length - 1) loadPuzzle(++current);
-    else endGame();
+
+    if (current < puzzlesByDate[todayKey].length - 1) {
+      loadPuzzle(++current);
+    } else {
+      endGame();
+    }
   }
 
   function startTimer() {
@@ -128,7 +159,7 @@
     timerDiv.classList.remove('hidden');
     clearInterval(timerInt);
     timerInt = setInterval(() => {
-      timerDiv.textContent = `Time: ${((Date.now()-startTime)/1000).toFixed(2)}s`;
+      timerDiv.textContent = `Time: ${((Date.now() - startTime)/1000).toFixed(2)}s`;
     }, 100);
   }
 
@@ -144,39 +175,48 @@
     startBtn.classList.remove('hidden');
     startBtn.disabled = false;
 
-    const total = resultsLog.length;
+    const total   = resultsLog.length;
     const correct = resultsLog.filter(v => v).length;
-    const valid = times.filter(t => typeof t==='number' && isFinite(t));
-    const avg = valid.length ? (valid.reduce((a,b)=>a+b,0)/valid.length).toFixed(2) : 'N/A';
+    const valid   = times.filter(t => typeof t === 'number' && isFinite(t));
+    const avg     = valid.length
+            ? (valid.reduce((a,b) => a + b, 0) / valid.length).toFixed(2)
+            : 'N/A';
 
-    const oldSt = +getCookie(streakKey)||0;
-    const newSt = correct===total ? oldSt+1 : 0;
-    setCookie(streakKey, newSt, 365);
-    setCookie(lastKey, todayKey, 365);
+    if (!isReplay) {
+      const oldSt = +getCookie(streakKey) || 0;
+      const newSt = correct === total ? oldSt + 1 : 0;
+      setCookie(streakKey, newSt, 365);
+      setCookie(lastKey, todayKey, 365);
+      saveHistory(todayKey, `${correct}/${total}`, avg);
+    }
 
     resultsEl.innerHTML = `
         <h2 class="text-2xl font-bold">Results</h2>
         <p>Score: <span class="font-medium">${correct}/${total}</span></p>
         <p>Average time: <span class="font-medium">${avg}s</span></p>
-        ${correct===total
-            ? `<p>Your streak: <span class="font-medium">${newSt} days</span></p>`
-            : `<p class="text-red-400">Your streak has been reset.</p>`}
+        ${
+            isReplay
+                    ? `<p class="italic text-sm text-gray-400">Replay mode – results not recorded.</p>`
+                    : correct === total
+                            ? `<p>Your streak: <span class="font-medium">${getCookie(streakKey)} days</span></p>`
+                            : `<p class="text-red-400">Your streak has been reset.</p>`
+    }
       `;
     resultsEl.classList.remove('hidden');
-    saveHistory(todayKey, `${correct}/${total}`, avg);
-  }
-
-  function saveHistory(date, score, avg) {
-    const h = JSON.parse(localStorage.getItem('ratHistory')|| '{}');
-    h[date] = { score, avg };
-    localStorage.setItem('ratHistory', JSON.stringify(h));
     renderHistory();
   }
 
+  function saveHistory(date, score, avg) {
+    const h = JSON.parse(localStorage.getItem('ratHistory') || '{}');
+    h[date] = { score, avg };
+    localStorage.setItem('ratHistory', JSON.stringify(h));
+  }
+
   function renderHistory() {
-    const h = JSON.parse(localStorage.getItem('ratHistory')|| '{}');
+    const h = JSON.parse(localStorage.getItem('ratHistory') || '{}');
     const entries = Object.entries(h).sort((a,b) => b[0].localeCompare(a[0]));
-    historyT.innerHTML = entries.map(([d,{score,avg}]) => `
+
+    historyBody.innerHTML = entries.map(([d,{score,avg}]) => `
         <tr>
           <td class="py-1">${d}</td>
           <td class="py-1">${score}</td>
@@ -184,15 +224,21 @@
         </tr>
       `).join('');
 
-    let totalCorrect=0, totalPuzzles=0, sumTimes=0, countTimes=0;
-    for(const [, {score, avg}] of entries){
-      const [c,t]=score.split('/').map(n=>+n);
-      totalCorrect+=c; totalPuzzles+=t;
-      if(avg!=='N/A'){ sumTimes+=parseFloat(avg)*t; countTimes+=t; }
+    // overall
+    let totalC=0, totalT=0, sumAv=0, cntAv=0;
+    for (const [ , {score, avg}] of entries) {
+      const [c, t] = score.split('/').map(n => +n);
+      totalC += c;
+      totalT += t;
+      if (avg !== 'N/A') {
+        sumAv += parseFloat(avg) * t;
+        cntAv += t;
+      }
     }
-    const overallScore = totalPuzzles ? `${totalCorrect}/${totalPuzzles}` : '–';
-    const overallAvg = countTimes ? (sumTimes/countTimes).toFixed(2) : '–';
-    document.getElementById('history-footer').innerHTML = `
+    const overallScore = totalT ? `${totalC}/${totalT}` : '–';
+    const overallAvg   = cntAv   ? (sumAv / cntAv).toFixed(2) : '–';
+
+    historyFooter.innerHTML = `
         <tr class="font-semibold">
           <td class="pt-2">Overall</td>
           <td class="pt-2">${overallScore}</td>
