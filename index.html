@@ -8,18 +8,29 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="style.css"/>
 </head>
-<body class="bg-gray-900 min-h-screen flex justify-center items-start pt-20">
-<div class="fixed top-0 left-0 w-full h-2 bg-red-600"></div>
-<main class="w-full max-w-md mx-auto bg-gray-800 text-gray-100 p-8 rounded-xl shadow-2xl">
-  <h1 class="text-3xl font-extrabold mb-2 flex items-center justify-center gap-2">
+<body class="bg-gray-900 min-h-screen flex justify-center items-start pt-5">
+<main class="w-full max-w-3xl mx-auto bg-gray-800 text-gray-100 p-8 rounded-xl shadow-2xl">
+  <h1 class="text-3xl font-extrabold mb-4 flex items-center justify-center gap-2">
     Where’s Rat?
     <img src="xdd.webp" alt="rat icon" class="w-6 h-6"/>
   </h1>
-  <p id="message" class="text-gray-300 mb-6">Your current streak: 0 days</p>
+  <p id="message" class="text-gray-300 mb-4">Your current streak: 0 days</p>
 
-  <!-- canvas container -->
+  <div id="date-select-wrap" class="mb-4"></div>
+
   <div id="canvas-wrap" class="hidden mb-6">
-    <canvas id="puzzle-canvas" class="w-full rounded-md shadow-inner"></canvas>
+    <canvas id="puzzle-canvas" class="w-full h-[80vh] max-h-[90vh] rounded-md shadow-inner object-contain"></canvas>
+
+    <!-- Zoom toggle and preview -->
+    <div class="flex justify-end items-center mt-2 gap-2">
+      <button id="toggle-zoom" class="text-gray-300 hover:text-white text-sm flex items-center gap-1">
+        🔍 Show Zoom
+      </button>
+    </div>
+
+    <div id="zoom-preview" class="hidden mt-2 flex justify-center">
+      <canvas id="zoom-canvas" width="100" height="100" class="rounded shadow-lg border border-gray-600"></canvas>
+    </div>
   </div>
 
   <div id="timer" class="hidden inline-block bg-gray-700 px-3 py-1 rounded-full text-sm font-mono text-gray-200 mb-6">
@@ -29,7 +40,7 @@
   <div id="results" class="hidden space-y-4 text-left mb-6"></div>
 
   <button id="start-btn" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition focus:ring-2 focus:ring-blue-500">
-    Start Today’s Game
+    Start This Game
   </button>
 
   <details class="mt-6 text-gray-200">
@@ -49,18 +60,17 @@
 </main>
 
 <script>
-  //–– cookie helpers ––
   function setCookie(n, v, d) {
     const x = new Date();
     x.setTime(x.getTime() + d * 864e5);
     document.cookie = `${n}=${encodeURIComponent(v)};path=/;expires=${x.toUTCString()}`;
   }
+
   function getCookie(n) {
-    const m = document.cookie.match('(^|;)\\s*'+n+'=([^;]+)');
+    const m = document.cookie.match('(^|;)\\s*' + n + '=([^;]+)');
     return m ? decodeURIComponent(m[2]) : null;
   }
 
-  //–– elements ––
   const msg           = document.getElementById('message');
   const timerDiv      = document.getElementById('timer');
   const canvasWrap    = document.getElementById('canvas-wrap');
@@ -70,22 +80,28 @@
   const resultsEl     = document.getElementById('results');
   const historyBody   = document.getElementById('history-body');
   const historyFooter = document.getElementById('history-footer');
+  const dateWrap      = document.getElementById('date-select-wrap');
 
-  //–– state ––
-  let puzzlesByDate = {},
-          todayKey      = new Date().toISOString().slice(0,10),
-          isReplay      = false;
+  const zoomCanvas = document.getElementById('zoom-canvas');
+  const zoomCtx = zoomCanvas.getContext('2d');
+  const zoomBox = document.getElementById('zoom-preview');
+  const zoomToggle = document.getElementById('toggle-zoom');
+  let zoomEnabled = false;
 
-  const lastKey   = 'ratLastPlayed',
-          streakKey = 'ratStreak';
+  let puzzlesByDate = {};
+  const todayKey = new Date().toISOString().slice(0,10);
+  // const todayKey = '2025-07-03';
+  let selectedDate = todayKey;
+  const lastKey   = 'ratLastPlayed';
+  const streakKey = 'ratStreak';
+  let isReplay = false;
 
-  let current   = 0,
+  let current = 0,
           startTime = null,
           timerInt,
-          times      = [],
+          times = [],
           resultsLog = [];
 
-  //–– load registry ––
   fetch('puzzles.json')
           .then(r => r.json())
           .then(json => {
@@ -97,56 +113,111 @@
           });
 
   function init() {
-    isReplay = getCookie(lastKey) === todayKey;
     msg.textContent = `Your current streak: ${getCookie(streakKey) || 0} days`;
     renderHistory();
+
+    const availableDates = Object.keys(puzzlesByDate)
+            .filter(d => d <= todayKey)
+            .sort((a, b) => b.localeCompare(a));
+
+    const label = document.createElement('label');
+    label.textContent = 'Select date:';
+    label.className = 'text-sm text-gray-300 mr-2';
+
+    const select = document.createElement('select');
+    select.className = 'bg-gray-700 text-white rounded px-2 py-1';
+    select.id = 'date-select';
+
+    availableDates.forEach(date => {
+      const opt = document.createElement('option');
+      opt.value = date;
+      opt.textContent = date === todayKey ? 'Today' : date;
+      if (date === todayKey) opt.selected = true;
+      select.appendChild(opt);
+    });
+
+    select.addEventListener('change', () => {
+      selectedDate = select.value;
+    });
+
+    label.appendChild(select);
+    dateWrap.appendChild(label);
+
     startBtn.addEventListener('click', startGame);
     canvas.addEventListener('click', handleClick);
+    canvas.addEventListener('mousemove', handleZoom);
+    zoomToggle.addEventListener('click', () => {
+      zoomEnabled = !zoomEnabled;
+      zoomBox.classList.toggle('hidden', !zoomEnabled);
+      zoomToggle.textContent = zoomEnabled ? '🔍 Hide Zoom' : '🔍 Show Zoom';
+    });
   }
 
   function startGame() {
-    const todayP = puzzlesByDate[todayKey];
-    if (!todayP) {
-      msg.textContent = 'Puzzle for today not ready.';
+    const selectedP = puzzlesByDate[selectedDate];
+    if (!selectedP) {
+      msg.textContent = 'Puzzle for selected day not found.';
       return;
     }
+
+    isReplay = selectedDate !== todayKey;
     startBtn.classList.add('hidden');
     startBtn.disabled = true;
     resultsEl.classList.add('hidden');
+
+    zoomBox.classList.add('hidden');
+    zoomEnabled = false;
+    zoomToggle.textContent = '🔍 Show Zoom';
+
     times = [];
     resultsLog = [];
     current = 0;
     loadPuzzle(0);
   }
 
+
   function loadPuzzle(i) {
-    const p = puzzlesByDate[todayKey][i];
+    const p = puzzlesByDate[selectedDate][i];
     const img = new Image();
     img.src = p.src;
     img.onload = () => {
-      canvas.width  = img.width;
+      canvas.width = img.width;
       canvas.height = img.height;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
       canvasWrap.classList.remove('hidden');
       startTimer();
-      msg.textContent = `Find the rat in image ${i+1} of ${puzzlesByDate[todayKey].length}`;
+      msg.textContent = `Find the rat in image ${i + 1} of ${puzzlesByDate[selectedDate].length}`;
     };
   }
 
   function handleClick(ev) {
     if (startTime === null) return;
     const rect = canvas.getBoundingClientRect();
-    const x = (ev.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (ev.clientY - rect.top)  * (canvas.height / rect.height);
-    const p = puzzlesByDate[todayKey][current];
+    const displayAspect = rect.width / rect.height;
+    const imageAspect = canvas.width / canvas.height;
+
+    let scale, offsetX = 0, offsetY = 0;
+    if (imageAspect > displayAspect) {
+      // Image fills width, black bars top/bottom
+      scale = canvas.width / rect.width;
+      offsetY = (rect.height - (rect.width / imageAspect)) / 2;
+    } else {
+      // Image fills height, black bars left/right
+      scale = canvas.height / rect.height;
+      offsetX = (rect.width - (rect.height * imageAspect)) / 2;
+    }
+
+    const x = (ev.clientX - rect.left - offsetX) * scale;
+    const y = (ev.clientY - rect.top - offsetY) * scale;
+    const p = puzzlesByDate[selectedDate][current];
     const ok = x >= p.x1 && x <= p.x2 && y >= p.y1 && y <= p.y2;
     resultsLog.push(ok);
     const elapsed = (Date.now() - startTime) / 1000;
     stopTimer();
     if (ok) times.push(elapsed);
 
-    if (current < puzzlesByDate[todayKey].length - 1) {
+    if (current < puzzlesByDate[selectedDate].length - 1) {
       loadPuzzle(++current);
     } else {
       endGame();
@@ -159,7 +230,7 @@
     timerDiv.classList.remove('hidden');
     clearInterval(timerInt);
     timerInt = setInterval(() => {
-      timerDiv.textContent = `Time: ${((Date.now() - startTime)/1000).toFixed(2)}s`;
+      timerDiv.textContent = `Time: ${((Date.now() - startTime) / 1000).toFixed(2)}s`;
     }, 100);
   }
 
@@ -175,33 +246,36 @@
     startBtn.classList.remove('hidden');
     startBtn.disabled = false;
 
-    const total   = resultsLog.length;
+    const total = resultsLog.length;
     const correct = resultsLog.filter(v => v).length;
-    const valid   = times.filter(t => typeof t === 'number' && isFinite(t));
-    const avg     = valid.length
-            ? (valid.reduce((a,b) => a + b, 0) / valid.length).toFixed(2)
-            : 'N/A';
+    const valid = times.filter(t => typeof t === 'number' && isFinite(t));
+    const avg = valid.length ? (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(2) : 'N/A';
+
+    let resultHTML = `
+      <h2 class="text-2xl font-bold border-b border-gray-600 pb-1">Results</h2>
+      <p>Score: <span class="font-medium">${correct}/${total}</span></p>
+      <p>Average time: <span class="font-medium">${avg}s</span></p>
+    `;
 
     if (!isReplay) {
       const oldSt = +getCookie(streakKey) || 0;
-      const newSt = correct === total ? oldSt + 1 : 0;
+      let newSt = oldSt;
+      if (correct === total) {
+        newSt = oldSt + 1;
+        msg.textContent = `Your current streak: ${newSt} days`;
+      } else {
+        msg.textContent = `Your current streak: ${newSt} days (not increased)`;
+      }
       setCookie(streakKey, newSt, 365);
       setCookie(lastKey, todayKey, 365);
-      saveHistory(todayKey, `${correct}/${total}`, avg);
+      saveHistory(selectedDate, `${correct}/${total}`, avg);
+
+      resultHTML += `<p>Your streak: <span class="font-medium">${newSt} days</span></p>`;
+    } else {
+      resultHTML += `<p class="italic text-sm text-gray-400">Replay mode – results not recorded.</p>`;
     }
 
-    resultsEl.innerHTML = `
-        <h2 class="text-2xl font-bold">Results</h2>
-        <p>Score: <span class="font-medium">${correct}/${total}</span></p>
-        <p>Average time: <span class="font-medium">${avg}s</span></p>
-        ${
-            isReplay
-                    ? `<p class="italic text-sm text-gray-400">Replay mode – results not recorded.</p>`
-                    : correct === total
-                            ? `<p>Your streak: <span class="font-medium">${getCookie(streakKey)} days</span></p>`
-                            : `<p class="text-red-400">Your streak has been reset.</p>`
-    }
-      `;
+    resultsEl.innerHTML = resultHTML;
     resultsEl.classList.remove('hidden');
     renderHistory();
   }
@@ -214,19 +288,18 @@
 
   function renderHistory() {
     const h = JSON.parse(localStorage.getItem('ratHistory') || '{}');
-    const entries = Object.entries(h).sort((a,b) => b[0].localeCompare(a[0]));
+    const entries = Object.entries(h).sort((a, b) => b[0].localeCompare(a[0]));
 
-    historyBody.innerHTML = entries.map(([d,{score,avg}]) => `
-        <tr>
-          <td class="py-1">${d}</td>
-          <td class="py-1">${score}</td>
-          <td class="py-1">${avg}</td>
-        </tr>
-      `).join('');
+    historyBody.innerHTML = entries.map(([d, { score, avg }]) => `
+      <tr>
+        <td class="py-1">${d}</td>
+        <td class="py-1">${score}</td>
+        <td class="py-1">${avg}</td>
+      </tr>
+    `).join('');
 
-    // overall
-    let totalC=0, totalT=0, sumAv=0, cntAv=0;
-    for (const [ , {score, avg}] of entries) {
+    let totalC = 0, totalT = 0, sumAv = 0, cntAv = 0;
+    for (const [, { score, avg }] of entries) {
       const [c, t] = score.split('/').map(n => +n);
       totalC += c;
       totalT += t;
@@ -235,16 +308,56 @@
         cntAv += t;
       }
     }
+
     const overallScore = totalT ? `${totalC}/${totalT}` : '–';
-    const overallAvg   = cntAv   ? (sumAv / cntAv).toFixed(2) : '–';
+    const overallAvg = cntAv ? (sumAv / cntAv).toFixed(2) : '–';
 
     historyFooter.innerHTML = `
-        <tr class="font-semibold">
-          <td class="pt-2">Overall</td>
-          <td class="pt-2">${overallScore}</td>
-          <td class="pt-2">${overallAvg}</td>
-        </tr>
-      `;
+      <tr class="font-semibold">
+        <td class="pt-2">Overall</td>
+        <td class="pt-2">${overallScore}</td>
+        <td class="pt-2">${overallAvg}</td>
+      </tr>
+    `;
+  }
+
+  function handleZoom(e) {
+    if (!zoomEnabled) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const displayAspect = rect.width / rect.height;
+    const imageAspect = canvas.width / canvas.height;
+
+    let scale;
+    let offsetX = 0, offsetY = 0;
+
+    if (imageAspect > displayAspect) {
+      // Image fills width, black bars on top/bottom
+      scale = canvas.width / rect.width;
+      offsetY = (rect.height - (rect.width / imageAspect)) / 2;
+    } else {
+      // Image fills height, black bars on left/right
+      scale = canvas.height / rect.height;
+      offsetX = (rect.width - (rect.height * imageAspect)) / 2;
+    }
+
+    const x = (e.clientX - rect.left - offsetX) * scale;
+    const y = (e.clientY - rect.top - offsetY) * scale;
+    const size = 50;
+    const zoom = 2;
+
+    zoomCtx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height);
+    zoomCtx.drawImage(
+            canvas,
+            x - size / 2,
+            y - size / 2,
+            size,
+            size,
+            0,
+            0,
+            zoomCanvas.width,
+            zoomCanvas.height
+    );
   }
 </script>
 </body>
