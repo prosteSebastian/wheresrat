@@ -36,3 +36,16 @@ button#start-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 10px rgba(0,0,0,0.4);
 }
+#canvas-wrap.hidden {
+  display: none;
+}
+
+#canvas-wrap canvas {
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+  pointer-events: none;
+}
+#canvas-wrap:not(.hidden) canvas {
+  opacity: 1;
+  pointer-events: auto;
+}
