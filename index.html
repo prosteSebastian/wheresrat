@@ -159,7 +159,7 @@
       msg.textContent = 'Puzzle for selected day not found.';
       return;
     }
-
+    
     isReplay = selectedDate !== todayKey;
     startBtn.classList.add('hidden');
     startBtn.disabled = true;
@@ -258,22 +258,29 @@
     `;
 
     if (!isReplay) {
-      const oldSt = +getCookie(streakKey) || 0;
-      let newSt = oldSt;
-      if (correct === total) {
-        newSt = oldSt + 1;
-        msg.textContent = `Your current streak: ${newSt} days`;
-      } else {
-        msg.textContent = `Your current streak: ${newSt} days (not increased)`;
-      }
-      setCookie(streakKey, newSt, 365);
-      setCookie(lastKey, todayKey, 365);
-      saveHistory(selectedDate, `${correct}/${total}`, avg);
+      const history = JSON.parse(localStorage.getItem('ratHistory') || '{}');
 
-      resultHTML += `<p>Your streak: <span class="font-medium">${newSt} days</span></p>`;
+      if (!history[todayKey]) {
+        const oldSt = +getCookie(streakKey) || 0;
+        let newSt = oldSt;
+        if (correct === total) {
+          newSt = oldSt + 1;
+          msg.textContent = `Your current streak: ${newSt} days`;
+        } else {
+          msg.textContent = `Your current streak: ${newSt} days (not increased)`;
+        }
+        setCookie(streakKey, newSt, 365);
+        setCookie(lastKey, todayKey, 365);
+        saveHistory(selectedDate, `${correct}/${total}`, avg);
+
+        resultHTML += `<p>Your streak: <span class="font-medium">${newSt} days</span></p>`;
+      } else {
+        resultHTML += `<p class="italic text-sm text-gray-400">Result already recorded today.</p>`;
+      }
     } else {
       resultHTML += `<p class="italic text-sm text-gray-400">Replay mode – results not recorded.</p>`;
     }
+
 
     resultsEl.innerHTML = resultHTML;
     resultsEl.classList.remove('hidden');
