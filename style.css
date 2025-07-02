@@ -1,51 +1,90 @@
+/* reset box-sizing */
+* { box-sizing: border-box; }
+
+/* celé pozadí s mírným šumem */
 body {
-  /* deep charcoal backdrop with subtle noise */
-  background: #1b1b1b url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAA/0lEQVR4AYWSPW6DMBBFb4rlpPDtFQcZLavQnqnoten...') repeat;
+  background: #1b1b1b url('data:image/png;base64,...') repeat;
 }
 
+/* skleněný efekt hlavního panelu */
 main {
-  /* frosted glass effect */
   background: rgba(24,24,24,0.75);
   backdrop-filter: blur(10px);
+  transition: padding-bottom 0.3s ease;
 }
 
-canvas {
-  /* inner glow instead of solid border */
-  border: none;
+/* canvas wrapper */
+#canvas-wrap {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease;
+  margin-bottom: 1.5rem; /* rezervuj prostor, aby neblikalo */
+}
+#canvas-wrap:not(.hidden) {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* samotné plátno */
+#puzzle-canvas {
+  width: 100%;
   box-shadow: inset 0 4px 8px rgba(0,0,0,0.6);
+  border-radius: .5rem;
+  transform: scale(1.08);
 }
 
+/* timer jako pill */
 #timer {
-  /* darker pill with transparency */
   background: rgba(31,41,55,0.85);
+  display: inline-block;
+  padding: .25rem .75rem;
+  border-radius: .375rem;
+  font-family: monospace;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: 0;
+  visibility: hidden;
+  margin-bottom: 1.5rem; /* rezervuj prostor */
+}
+#timer:not(.hidden) {
+  opacity: 1;
+  visibility: visible;
 }
 
-#results h2 {
-  /* accent underline */
-  border-bottom: 2px solid #3b82f6;
-  padding-bottom: 0.25em;
-  margin-bottom: 0.5em;
+/* výsledky */
+#results {
+  transition: opacity 0.3s ease;
+  opacity: 0;
+  visibility: hidden;
+  margin-bottom: 1.5rem; /* rezervuj prostor */
+}
+#results:not(.hidden) {
+  opacity: 1;
+  visibility: visible;
 }
 
-button#start-btn {
-  /* lift on hover */
+/* tlačítko start */
+#start-btn {
+  width: 100%;
+  padding: .5rem;
+  background: #2563eb;
+  color: white;
+  border-radius: .5rem;
   box-shadow: 0 4px 6px rgba(0,0,0,0.3);
   transition: transform .1s, box-shadow .1s;
 }
-button#start-btn:hover {
+#start-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 10px rgba(0,0,0,0.4);
 }
-#canvas-wrap.hidden {
-  display: none;
+
+/* podtržení nadpisu výsledků */
+#results h2 {
+  border-bottom: 2px solid #3b82f6;
+  padding-bottom: .25em;
+  margin-bottom: .5em;
 }
 
-#canvas-wrap canvas {
-  opacity: 0;
-  transition: opacity 0.5s ease-in-out;
-  pointer-events: none;
-}
-#canvas-wrap:not(.hidden) canvas {
-  opacity: 1;
-  pointer-events: auto;
+/* Pro hladší layout při skrytí / zobrazení */
+.hidden {
+
 }
